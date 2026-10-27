@@ -5,9 +5,8 @@ export const app = express();
 
 app.use(express.json());
 
-// เพิ่มทดสอบ status
 app.get("/", (req, res) => {
-  res.json({ message: "Server is running on Vercel!" });
+  res.json({ message: "API is working!" });
 });
 
 app.use("/api", api);
