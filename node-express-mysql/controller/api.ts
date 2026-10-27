@@ -242,6 +242,33 @@ router.delete('/orders', async (req: Request, res: Response) => {
 
 //------------------------------ POST ------------------------------------
 
+// เพิ่มลูกค้าใหม่ (POST /customers)
+router.post('/customers', async (req: Request, res: Response) => {
+    try {
+        const { first_name, last_name, phone, lat, lng } = req.body;
+
+        // เช็กข้อมูลเบื้องต้น
+        if (!first_name || !phone) {
+            return res.status(400).json({ error: "กรุณาระบุชื่อ (first_name) และเบอร์โทรศัพท์ (phone)" });
+        }
+
+        const sql = "INSERT INTO customers (first_name, last_name, phone, lat, lng) VALUES (?, ?, ?, ?, ?)";
+        const [result] = await conn.query(sql, [first_name, last_name, phone, lat, lng]) as [any, any];
+
+        return res.status(201).json({
+            message: "เพิ่มข้อมูลลูกค้าสำเร็จ",
+            customer_id: result.insertId,
+            first_name,
+            last_name,
+            phone,
+            lat,
+            lng
+        });
+    } catch (err: any) {
+        return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการเพิ่มลูกค้า' });
+    }
+});
+
 // จำลองการสร้างออเดอร์แบบสุ่ม (simulate orders)
 router.post('/orders/simulate', async (req: Request, res: Response) => {
   try {
