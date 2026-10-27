@@ -2,14 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "app.ts",
+      "src": "node-express-mysql/server.ts",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "app.ts"
+      "dest": "node-express-mysql/server.ts"
     }
   ]
 }
