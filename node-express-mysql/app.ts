@@ -10,3 +10,4 @@ app.use("/api", api);
 // app.use("/", (req, res) => {
 //   res.send("Hello World!!!");
 // });
+export default app;
