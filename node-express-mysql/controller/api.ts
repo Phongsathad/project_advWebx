@@ -382,20 +382,20 @@ router.get('/riders/:id/tasks', async (req: Request, res: Response) => {
     try {
         const riderId = req.params.id;
 
-        // ตัวอย่างคำสั่ง SQL (ปรับเปลี่ยนตามชื่อตารางจริงในฐานข้อมูลของคุณ เช่น ตาราง assignments หรือ route_plans)
+        // ตัวอย่างคำสั่ง SQL (ตรวจสอบว่าชื่อตาราง riders, orders, customers ถูกต้องตามฐานข้อมูลจริงของคุณหรือไม่)
         const sql = `
             SELECT o.order_id, o.box_count, c.first_name, c.last_name, c.phone, c.lat, c.lng
             FROM orders o
             JOIN customers c ON o.customer_id = c.customer_id
-            WHERE o.rider_id = ? AND (o.status != 'completed' AND o.status != 'Completed')
+            WHERE o.rider_id = ?
         `;
 
         const [rows]: any = await conn.query(sql, [riderId]);
         return res.json(rows);
 
     } catch (err: any) {
-        console.error('Get Rider Tasks Error:', err);
-        return res.status(500).json({ error: err?.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลงาน' });
+        console.error('API Error /riders/:id/tasks:', err);
+        return res.status(500).json({ error: err.message || 'Database error' });
     }
 });
 
