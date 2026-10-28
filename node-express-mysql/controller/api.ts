@@ -547,3 +547,41 @@ router.post('/riders/login', async (req: Request, res: Response) => {
         return res.status(500).json({ error: err?.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ' });
     }
 });
+
+// ตัวอย่าง API สำหรับบันทึกแผนเส้นทางและการจัดส่งของแอดมิน
+router.post('/api/routes/save', async (req: Request, res: Response) => {
+    try {
+        const { plan_date, routes } = req.body; // routes คืออาเรย์เก็บ rider_id และรายการ order_id
+
+        // 1. บันทึกลงตาราง route_plans
+        const [planResult]: any = await conn.query(
+            'INSERT INTO route_plans (plan_date) VALUES (?)', 
+            [plan_date || new Date()]
+        );
+        const planId = planResult.insertId;
+
+        // 2. วนลูปบันทึกเส้นทางของไรเดอร์แต่ละคนและจุดส่งสินค้า
+        for (const r of routes) {
+            const [routeResult]: any = await conn.query(
+                'INSERT INTO routes (plan_id, rider_id, color) VALUES (?, ?, ?)',
+                [planId, r.rider_id, r.color || '#0077b6']
+            );
+            const routeId = routeResult.insertId;
+
+            // บันทึกรายการออเดอร์ลง route_stops
+            if (r.orders && r.orders.length > 0) {
+                for (let i = 0; i < r.orders.length; i++) {
+                    await conn.query(
+                        'INSERT INTO route_stops (route_id, order_id, stop_seq) VALUES (?, ?, ?)',
+                        [routeId, r.orders[i].order_id, i + 1]
+                    );
+                }
+            }
+        }
+
+        return res.json({ success: true, message: 'บันทึกเส้นทางสำเร็จ' });
+    } catch (err: any) {
+        console.error('Save Route Error:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
