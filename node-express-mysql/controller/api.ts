@@ -377,38 +377,25 @@ router.put('/customers/:id', async (req: Request, res: Response) => {
     }
 });
 
-// ดึงรายการจุดส่งของไรเดอร์ตาม rider_id สำหรับวันนี้
-router.get('/api/riders/:riderId/tasks', async (req, res) => {
+// ตัวอย่าง Endpoint สำหรับดึงรายการงานของไรเดอร์แต่ละคน
+router.get('/riders/:id/tasks', async (req: Request, res: Response) => {
     try {
-        const { riderId } = req.params;
-        const today = new Date().toISOString().split('T')[0];
+        const riderId = req.params.id;
 
-        const query = `
-            SELECT 
-                rs.stop_id,
-                rs.stop_seq,
-                rs.status AS stop_status,
-                o.order_id,
-                o.box_count,
-                o.deadline,
-                c.first_name,
-                c.last_name,
-                c.phone,
-                c.lat,
-                c.lng,
-                c.address_note
-            FROM route_plans rp
-            JOIN routes r ON rp.plan_id = r.plan_id
-            JOIN route_stops rs ON r.route_id = rs.route_id
-            JOIN orders o ON rs.order_id = o.order_id
+        // ตัวอย่างคำสั่ง SQL (ปรับเปลี่ยนตามชื่อตารางจริงในฐานข้อมูลของคุณ เช่น ตาราง assignments หรือ route_plans)
+        const sql = `
+            SELECT o.order_id, o.box_count, c.first_name, c.last_name, c.phone, c.lat, c.lng
+            FROM orders o
             JOIN customers c ON o.customer_id = c.customer_id
-            WHERE r.rider_id = ? AND rp.plan_date = ?
-            ORDER BY rs.stop_seq ASC;
+            WHERE o.rider_id = ? AND (o.status != 'completed' AND o.status != 'Completed')
         `;
-        const [rows] = await conn.query(query, [riderId, today]);
-        res.json(rows);
+
+        const [rows]: any = await conn.query(sql, [riderId]);
+        return res.json(rows);
+
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        console.error('Get Rider Tasks Error:', err);
+        return res.status(500).json({ error: err?.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลงาน' });
     }
 });
 
