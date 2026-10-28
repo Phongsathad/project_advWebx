@@ -412,6 +412,7 @@ router.get('/riders/:id/tasks', async (req: Request, res: Response) => {
                 rs.stop_seq,
                 rs.eta,
                 rs.delivered_at,
+                r.color,
                 o.order_id,
                 o.box_count,
                 o.deadline,
@@ -427,7 +428,15 @@ router.get('/riders/:id/tasks', async (req: Request, res: Response) => {
             JOIN route_stops rs ON r.route_id = rs.route_id
             JOIN orders o ON rs.order_id = o.order_id
             JOIN customers c ON o.customer_id = c.customer_id
-            WHERE r.rider_id = ? AND rp.plan_date = CURDATE()
+            WHERE r.rider_id = ?
+              AND COALESCE(LOWER(TRIM(o.status)), 'pending') NOT IN ('completed', 'delivered', 'cancelled')
+              AND rp.plan_id = (
+                  SELECT MAX(latest_rp.plan_id)
+                  FROM route_stops latest_rs
+                  JOIN routes latest_r ON latest_r.route_id = latest_rs.route_id
+                  JOIN route_plans latest_rp ON latest_rp.plan_id = latest_r.plan_id
+                  WHERE latest_rs.order_id = o.order_id
+              )
             ORDER BY rs.stop_seq ASC
         `;
 
