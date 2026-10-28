@@ -311,15 +311,26 @@ router.post('/orders', async (req: Request, res: Response) => {
             return res.status(400).json({ error: "กรุณาระบุ customer_id และ box_count ให้ครบถ้วน" });
         }
 
-        const sql = "INSERT INTO orders (customer_id, box_count, status) VALUES (?, ?, 'pending')";
-        const [result] = await conn.query(sql, [customer_id, box_count]) as [any, any];
+        // 🟢 1. คำนวณ DEADLINE (เวลาสั่งซื้อปัจจุบัน + 1 ชั่วโมง)
+        const orderTime = new Date();
+        const deadlineDate = new Date(orderTime.getTime() + 60 * 60 * 1000); // บวก 60 นาที
+
+        const h = String(deadlineDate.getHours()).padStart(2, '0');
+        const m = String(deadlineDate.getMinutes()).padStart(2, '0');
+        const s = String(deadlineDate.getSeconds()).padStart(2, '0');
+        const deadline = `${h}:${m}:${s}`;
+
+        // 🟢 2. เพิ่มคอลัมน์ deadline ใน SQL INSERT
+        const sql = "INSERT INTO orders (customer_id, box_count, status, deadline) VALUES (?, ?, 'pending', ?)";
+        const [result] = await conn.query(sql, [customer_id, box_count, deadline]) as [any, any];
 
         return res.status(201).json({
             message: "เพิ่มออเดอร์สำเร็จ",
             order_id: result.insertId,
             customer_id,
             box_count,
-            status: 'pending'
+            status: 'pending',
+            deadline
         });
     } catch (err: any) {
         return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการเพิ่มออเดอร์' });
@@ -548,28 +559,26 @@ router.post('/riders/login', async (req: Request, res: Response) => {
     }
 });
 
-// ตัวอย่าง API สำหรับบันทึกแผนเส้นทางและการจัดส่งของแอดมิน
-router.post('/api/routes/save', async (req: Request, res: Response) => {
+router.post('/api/routes/save', async (req, res) => {
     try {
-        const { plan_date, routes } = req.body; // routes คืออาเรย์เก็บ rider_id และรายการ order_id
+        const { plan_date, routes } = req.body;
 
-        // 1. บันทึกลงตาราง route_plans
-        const [planResult]: any = await conn.query(
+        // 1. บันทึกแผนลง route_plans (เปลี่ยน pool เป็นชื่อตัวแปรจริงของคุณ เช่น db หรือ conn)
+        const [planResult] = await conn.query(
             'INSERT INTO route_plans (plan_date) VALUES (?)', 
             [plan_date || new Date()]
         );
-        const planId = planResult.insertId;
+        const planId = (planResult as any).insertId;
 
-        // 2. วนลูปบันทึกเส้นทางของไรเดอร์แต่ละคนและจุดส่งสินค้า
+        // 2. วนลูปบันทึก routes และ route_stops
         for (const r of routes) {
-            const [routeResult]: any = await conn.query(
+            const [routeResult] = await conn.query(
                 'INSERT INTO routes (plan_id, rider_id, color) VALUES (?, ?, ?)',
-                [planId, r.rider_id, r.color || '#0077b6']
+                [planId, r.rider_id || r.id, r.color || '#0077b6']
             );
-            const routeId = routeResult.insertId;
+            const routeId = (routeResult as any).insertId;
 
-            // บันทึกรายการออเดอร์ลง route_stops
-            if (r.orders && r.orders.length > 0) {
+            if (r.orders && Array.isArray(r.orders)) {
                 for (let i = 0; i < r.orders.length; i++) {
                     await conn.query(
                         'INSERT INTO route_stops (route_id, order_id, stop_seq) VALUES (?, ?, ?)',
@@ -579,9 +588,9 @@ router.post('/api/routes/save', async (req: Request, res: Response) => {
             }
         }
 
-        return res.json({ success: true, message: 'บันทึกเส้นทางสำเร็จ' });
+        res.json({ success: true, message: 'บันทึกเส้นทางสำเร็จ' });
     } catch (err: any) {
-        console.error('Save Route Error:', err);
-        return res.status(500).json({ error: err.message });
+        console.error(err);
+        res.status(500).json({ error: err.message });
     }
 });
