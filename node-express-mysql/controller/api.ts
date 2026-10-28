@@ -382,29 +382,33 @@ router.get('/riders/:id/tasks', async (req: Request, res: Response) => {
     try {
         const riderId = req.params.id;
 
+        // คำสั่ง SQL ที่ถูกต้องตามโครงสร้าง Schema จริง
         const sql = `
-            SELECT o.order_id, o.box_count, c.first_name, c.last_name, c.phone, c.lat, c.lng,
-                   rs.stop_seq, rs.eta
+            SELECT 
+                rs.stop_id,
+                rs.stop_seq,
+                rs.eta,
+                rs.delivered_at,
+                o.order_id,
+                o.box_count,
+                o.deadline,
+                o.status,
+                c.first_name,
+                c.last_name,
+                c.phone,
+                c.lat,
+                c.lng,
+                c.address_note
             FROM routes r
-            JOIN route_plans rp ON rp.plan_id = r.plan_id
-            JOIN route_stops rs ON rs.route_id = r.route_id
-            JOIN orders o ON o.order_id = rs.order_id
+            JOIN route_plans rp ON r.plan_id = rp.plan_id
+            JOIN route_stops rs ON r.route_id = rs.route_id
+            JOIN orders o ON rs.order_id = o.order_id
             JOIN customers c ON o.customer_id = c.customer_id
-            WHERE r.rider_id = ?
-              AND rp.plan_id = (
-                  SELECT latest.plan_id
-                  FROM routes latest_route
-                  JOIN route_plans latest ON latest.plan_id = latest_route.plan_id
-                  WHERE latest_route.rider_id = ?
-                  ORDER BY latest.plan_date DESC, latest.plan_id DESC
-                  LIMIT 1
-              )
-              AND rs.delivered_at IS NULL
-              AND o.status NOT IN ('completed', 'Completed')
+            WHERE r.rider_id = ? AND rp.plan_date = CURDATE()
             ORDER BY rs.stop_seq ASC
         `;
 
-        const [rows]: any = await conn.query(sql, [riderId, riderId]);
+        const [rows]: any = await conn.query(sql, [riderId]);
         return res.json(rows);
 
     } catch (err: any) {
