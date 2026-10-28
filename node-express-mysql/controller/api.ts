@@ -410,3 +410,19 @@ router.get('/api/riders/:riderId/tasks', async (req, res) => {
     }
 });
 
+// เพิ่มไรเดอร์ใหม่เข้าสู่ระบบ
+router.post('/api/riders', async (req, res) => {
+    try {
+        const { name, phone, username, password_hash, capacity, is_active } = req.body;
+
+        const sql = `
+            INSERT INTO riders (name, phone, username, password_hash, capacity, is_active) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        `;
+        const [result] = await conn.query(sql, [name, phone, username, password_hash, capacity, is_active]);
+
+        return res.status(201).json({ message: "เพิ่มไรเดอร์สำเร็จ", rider_id: (result as any).insertId });
+    } catch (err: any) {
+        return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการเพิ่มไรเดอร์' });
+    }
+});
