@@ -449,6 +449,56 @@ router.get('/riders/:id/tasks', async (req: Request, res: Response) => {
     }
 });
 
+router.put('/riders/:riderId/tasks/:orderId/delivered', async (req: Request, res: Response) => {
+    const riderId = Number(req.params.riderId);
+    const orderId = Number(req.params.orderId);
+    if (!Number.isInteger(riderId) || riderId <= 0 || !Number.isInteger(orderId) || orderId <= 0) {
+        return res.status(400).json({ error: 'รหัสไรเดอร์หรือออเดอร์ไม่ถูกต้อง' });
+    }
+
+    const connection = await conn.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const [rows]: any = await connection.query(`
+            SELECT rs.stop_id
+            FROM route_stops rs
+            JOIN routes r ON r.route_id = rs.route_id
+            JOIN route_plans rp ON rp.plan_id = r.plan_id
+            JOIN orders o ON o.order_id = rs.order_id
+            WHERE r.rider_id = ?
+              AND o.order_id = ?
+              AND COALESCE(LOWER(TRIM(o.status)), 'pending') NOT IN ('completed', 'delivered', 'cancelled')
+              AND rp.plan_id = (
+                  SELECT MAX(latest_rp.plan_id)
+                  FROM route_stops latest_rs
+                  JOIN routes latest_r ON latest_r.route_id = latest_rs.route_id
+                  JOIN route_plans latest_rp ON latest_rp.plan_id = latest_r.plan_id
+                  WHERE latest_rs.order_id = o.order_id
+              )
+            LIMIT 1
+            FOR UPDATE
+        `, [riderId, orderId]);
+
+        if (rows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ error: 'ไม่พบงานที่ยังจัดส่งได้ของไรเดอร์คนนี้' });
+        }
+
+        await connection.query("UPDATE orders SET status = 'delivered' WHERE order_id = ?", [orderId]);
+        await connection.query('UPDATE route_stops SET delivered_at = NOW() WHERE stop_id = ?', [rows[0].stop_id]);
+        await connection.commit();
+
+        return res.json({ message: 'บันทึกสถานะจัดส่งสำเร็จ', order_id: orderId, status: 'delivered' });
+    } catch (err: any) {
+        await connection.rollback();
+        console.error('API Error PUT /riders/:riderId/tasks/:orderId/delivered:', err);
+        return res.status(500).json({ error: err?.message || 'ไม่สามารถอัปเดตสถานะจัดส่งได้' });
+    } finally {
+        connection.release();
+    }
+});
+
 router.post('/route-plans', async (req: Request, res: Response) => {
     const { plan_date, depart_time, assignments } = req.body;
     if (!plan_date || !Array.isArray(assignments) || assignments.length === 0) {
