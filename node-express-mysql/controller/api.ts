@@ -600,13 +600,14 @@ router.post('/riders/login', async (req: Request, res: Response) => {
             return res.status(400).json({ error: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน" });
         }
 
+        // 🟢 1. ดึง password_hash ออกมาด้วย username และเช็ก is_active = 1
         const sql = `
-            SELECT rider_id, name, phone, capacity, is_active 
+            SELECT rider_id, name, phone, capacity, is_active, password_hash 
             FROM riders 
-            WHERE username = ? AND password_hash = ? AND is_active = 1
+            WHERE username = ? AND is_active = 1
         `;
 
-        const [rows]: any = await conn.query(sql, [username.trim(), password]);
+        const [rows]: any = await conn.query(sql, [username.trim()]);
 
         if (rows.length === 0) {
             return res.status(401).json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกระงับการใช้งาน" });
@@ -614,6 +615,14 @@ router.post('/riders/login', async (req: Request, res: Response) => {
 
         const rider = rows[0];
 
+        // 🟢 2. เปรียบเทียบรหัสผ่านตัวธรรมดา (password) กับค่า Hash ใน DB (rider.password_hash)
+        const isPasswordValid = await bcrypt.compare(password, rider.password_hash);
+
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกระงับการใช้งาน" });
+        }
+
+        // 🟢 3. ถ้ารหัสผ่านถูกต้อง คืนค่าข้อมูลไรเดอร์
         return res.json({
             message: "เข้าสู่ระบบสำเร็จ",
             rider: {
