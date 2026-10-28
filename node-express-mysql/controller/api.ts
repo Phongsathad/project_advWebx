@@ -17,7 +17,7 @@ router.get('/', (req, res) => {
 });
 
 // ดูข้อมูลลูกค้าทั้งหมด
-router.get('/customers', async (req, res) => {   
+router.get('/customers', async (req, res) => {
     const [rows] = await conn.query("SELECT * FROM customers");
     let customers: Customers[] = rows as Customers[];
     res.json(customers);
@@ -28,9 +28,9 @@ router.get('/customers/search', async (req, res) => {
     try {
         const keyword = req.query.q || ''; // รับคำค้นหาจาก Query Parameter เช่น ?q=สมชาย
         const searchQuery = `%${keyword}%`;
-        
+
         const [rows] = await conn.query(
-            "SELECT * FROM customers WHERE first_name LIKE ? OR last_name LIKE ?", 
+            "SELECT * FROM customers WHERE first_name LIKE ? OR last_name LIKE ?",
             [searchQuery, searchQuery]
         );
         let customers: Customers[] = rows as Customers[];
@@ -56,7 +56,7 @@ router.get('/customers/:id', async (req, res) => {
 // ดูข้อมูลออเดอร์ในรัศมี 2 กม. รอบ มมส
 router.get('/orders/nearby-msu', async (req: Request, res: Response) => {
     try {
-        const msuLat = 16.1944; 
+        const msuLat = 16.1944;
         const msuLng = 103.2536;
         const radiusKm = 2; // รัศมี 2 กิโลเมตร
 
@@ -227,17 +227,17 @@ router.delete("/routes/:id", async (req, res) => {
 
 // 6. DELETE ออเดอร์ทั้งหมด
 router.delete('/orders', async (req: Request, res: Response) => {
-  try {
-    // ลบข้อมูลทั้งหมดจากตาราง orders
-    const [result] = await conn.query('DELETE FROM orders') as [any, any];
+    try {
+        // ลบข้อมูลทั้งหมดจากตาราง orders
+        const [result] = await conn.query('DELETE FROM orders') as [any, any];
 
-    return res.json({
-      message: 'ล้างออเดอร์ทั้งหมดเรียบร้อยแล้ว',
-      deleted_count: result.affectedRows
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการล้างออเดอร์' });
-  }
+        return res.json({
+            message: 'ล้างออเดอร์ทั้งหมดเรียบร้อยแล้ว',
+            deleted_count: result.affectedRows
+        });
+    } catch (err: any) {
+        return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการล้างออเดอร์' });
+    }
 });
 
 //------------------------------ POST ------------------------------------
@@ -245,25 +245,15 @@ router.delete('/orders', async (req: Request, res: Response) => {
 // เพิ่มลูกค้าใหม่ (POST /customers)
 router.post('/customers', async (req: Request, res: Response) => {
     try {
-        const { first_name, last_name, phone, lat, lng } = req.body;
+        const { first_name, last_name, phone, lat, lng, address_note } = req.body;
 
-        // เช็กข้อมูลเบื้องต้น
-        if (!first_name || !phone) {
-            return res.status(400).json({ error: "กรุณาระบุชื่อ (first_name) และเบอร์โทรศัพท์ (phone)" });
-        }
+        const sql = `
+            INSERT INTO customers (first_name, last_name, phone, lat, lng, address_note) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        `;
+        const [result] = await conn.query(sql, [first_name, last_name, phone, lat, lng, address_note]);
 
-        const sql = "INSERT INTO customers (first_name, last_name, phone, lat, lng) VALUES (?, ?, ?, ?, ?)";
-        const [result] = await conn.query(sql, [first_name, last_name, phone, lat, lng]) as [any, any];
-
-        return res.status(201).json({
-            message: "เพิ่มข้อมูลลูกค้าสำเร็จ",
-            customer_id: result.insertId,
-            first_name,
-            last_name,
-            phone,
-            lat,
-            lng
-        });
+        return res.status(201).json({ message: "เพิ่มข้อมูลลูกค้าสำเร็จ", id: (result as any).insertId });
     } catch (err: any) {
         return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการเพิ่มลูกค้า' });
     }
@@ -271,50 +261,50 @@ router.post('/customers', async (req: Request, res: Response) => {
 
 // จำลองการสร้างออเดอร์แบบสุ่ม (simulate orders)
 router.post('/orders/simulate', async (req: Request, res: Response) => {
-  try {
-    // 1. ดึงข้อมูล customer_id ทั้งหมดที่มีในระบบ
-    const [customers] = await conn.query('SELECT customer_id FROM customers') as [any[], any];
+    try {
+        // 1. ดึงข้อมูล customer_id ทั้งหมดที่มีในระบบ
+        const [customers] = await conn.query('SELECT customer_id FROM customers') as [any[], any];
 
-    if (!customers || customers.length === 0) {
-      return res.status(400).json({ error: 'ไม่พบข้อมูลลูกค้าในระบบ กรุณาเพิ่มข้อมูลลูกค้าก่อนจำลองออเดอร์' });
+        if (!customers || customers.length === 0) {
+            return res.status(400).json({ error: 'ไม่พบข้อมูลลูกค้าในระบบ กรุณาเพิ่มข้อมูลลูกค้าก่อนจำลองออเดอร์' });
+        }
+
+        // 2. สุ่มจำนวนออเดอร์ระหว่าง 20 ถึง 30 รายการ
+        const orderCount = Math.floor(Math.random() * (30 - 20 + 1)) + 20;
+
+        const newOrders = [];
+
+        // 3. สุ่มสร้างข้อมูลออเดอร์
+        for (let i = 0; i < orderCount; i++) {
+            // สุ่มเลือกลูกค้า 1 คนจากรายการทั้งหมด
+            const randomCustomer = customers[Math.floor(Math.random() * customers.length)];
+
+            // สุ่มจำนวนกล่อง 1 ถึง 3 กล่อง
+            const boxCount = Math.floor(Math.random() * 3) + 1;
+
+            newOrders.push([randomCustomer.customer_id, boxCount, 'pending']);
+        }
+
+        // 4. บันทึกข้อมูลลงในตาราง orders แบบ Bulk Insert
+        const sql = 'INSERT INTO orders (customer_id, box_count, status) VALUES ?';
+        const [result] = await conn.query(sql, [newOrders]) as [any, any];
+
+        return res.json({
+            message: `จำลองออเดอร์สำเร็จจำนวน ${orderCount} รายการ`,
+            count: orderCount,
+            inserted_rows: result.affectedRows
+        });
+
+    } catch (err: any) {
+        return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการจำลองออเดอร์' });
     }
-
-    // 2. สุ่มจำนวนออเดอร์ระหว่าง 20 ถึง 30 รายการ
-    const orderCount = Math.floor(Math.random() * (30 - 20 + 1)) + 20;
-    
-    const newOrders = [];
-
-    // 3. สุ่มสร้างข้อมูลออเดอร์
-    for (let i = 0; i < orderCount; i++) {
-      // สุ่มเลือกลูกค้า 1 คนจากรายการทั้งหมด
-      const randomCustomer = customers[Math.floor(Math.random() * customers.length)];
-      
-      // สุ่มจำนวนกล่อง 1 ถึง 3 กล่อง
-      const boxCount = Math.floor(Math.random() * 3) + 1;
-
-      newOrders.push([randomCustomer.customer_id, boxCount, 'pending']);
-    }
-
-    // 4. บันทึกข้อมูลลงในตาราง orders แบบ Bulk Insert
-    const sql = 'INSERT INTO orders (customer_id, box_count, status) VALUES ?';
-    const [result] = await conn.query(sql, [newOrders]) as [any, any];
-
-    return res.json({
-      message: `จำลองออเดอร์สำเร็จจำนวน ${orderCount} รายการ`,
-      count: orderCount,
-      inserted_rows: result.affectedRows
-    });
-
-  } catch (err: any) {
-    return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการจำลองออเดอร์' });
-  }
 });
 
 // เพิ่มออเดอร์ใหม่
 router.post('/orders', async (req: Request, res: Response) => {
     try {
         const { customer_id, box_count } = req.body;
-        
+
         if (!customer_id || !box_count) {
             return res.status(400).json({ error: "กรุณาระบุ customer_id และ box_count ให้ครบถ้วน" });
         }
@@ -362,6 +352,29 @@ router.put('/orders/:id', async (req: Request, res: Response) => {
     }
 });
 
+// แก้ไขข้อมูลลูกค้า
+router.put('/customers/:id', async (req: Request, res: Response) => {
+    try {
+        const customerId = req.params.id;
+        const { first_name, last_name, phone, lat, lng, address_note } = req.body;
+
+        const sql = `
+            UPDATE customers 
+            SET first_name = ?, last_name = ?, phone = ?, lat = ?, lng = ?, address_note = ? 
+            WHERE customer_id = ?
+        `;
+        const [result] = await conn.query(sql, [first_name, last_name, phone, lat, lng, address_note, customerId]) as [any, any];
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "ไม่พบข้อมูลลูกค้าที่ต้องการแก้ไข" });
+        }
+
+        return res.status(200).json({ message: "อัปเดตข้อมูลลูกค้าสำเร็จ" });
+    } catch (err: any) {
+        return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการแก้ไขลูกค้า' });
+    }
+});
+
 // ดึงรายการจุดส่งของไรเดอร์ตาม rider_id สำหรับวันนี้
 router.get('/api/riders/:riderId/tasks', async (req, res) => {
     try {
@@ -397,25 +410,3 @@ router.get('/api/riders/:riderId/tasks', async (req, res) => {
     }
 });
 
-// แก้ไขข้อมูลลูกค้า
-router.put('/customers/:id', async (req: Request, res: Response) => {
-    try {
-        const customerId = req.params.id;
-        const { first_name, last_name, phone, lat, lng } = req.body;
-
-        const sql = `
-            UPDATE customers 
-            SET first_name = ?, last_name = ?, phone = ?, lat = ?, lng = ? 
-            WHERE customer_id = ?
-        `;
-        const [result] = await conn.query(sql, [first_name, last_name, phone, lat, lng, customerId]) as [any, any];
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: "ไม่พบข้อมูลลูกค้าที่ต้องการแก้ไข" });
-        }
-
-        return res.status(200).json({ message: "อัปเดตข้อมูลลูกค้าสำเร็จ" });
-    } catch (err: any) {
-        return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการแก้ไขลูกค้า' });
-    }
-});////
