@@ -458,3 +458,42 @@ router.post('/riders', async (req: Request, res: Response) => {
         return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการเพิ่มไรเดอร์' });
     }
 });
+
+// ตรวจสอบการเข้าสู่ระบบของไรเดอร์ (POST /api/riders/login)
+router.post('/riders/login', async (req: Request, res: Response) => {
+    try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({ error: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน" });
+        }
+
+        const sql = `
+            SELECT rider_id, name, phone, capacity, is_active 
+            FROM riders 
+            WHERE username = ? AND password_hash = ? AND is_active = 1
+        `;
+
+        const [rows]: any = await conn.query(sql, [username.trim(), password]);
+
+        if (rows.length === 0) {
+            return res.status(401).json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกระงับการใช้งาน" });
+        }
+
+        const rider = rows[0];
+
+        return res.json({
+            message: "เข้าสู่ระบบสำเร็จ",
+            rider: {
+                rider_id: rider.rider_id,
+                name: rider.name,
+                phone: rider.phone,
+                capacity: rider.capacity
+            }
+        });
+
+    } catch (err: any) {
+        console.error('Login Error:', err);
+        return res.status(500).json({ error: err?.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ' });
+    }
+});
