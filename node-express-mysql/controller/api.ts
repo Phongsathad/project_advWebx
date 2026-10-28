@@ -377,38 +377,34 @@ router.put('/customers/:id', async (req: Request, res: Response) => {
     }
 });
 
-// ------------------------------ GET RIDER TASKS ------------------------------------
+// ตัวอย่าง Endpoint สำหรับดึงรายการงานของไรเดอร์แต่ละคน
 router.get('/riders/:id/tasks', async (req: Request, res: Response) => {
     try {
         const riderId = req.params.id;
 
-        // คำสั่ง SQL ที่ถูกต้องตามโครงสร้าง Schema จริง
         const sql = `
-            SELECT 
-                rs.stop_id,
-                rs.stop_seq,
-                rs.eta,
-                rs.delivered_at,
-                o.order_id,
-                o.box_count,
-                o.deadline,
-                o.status,
-                c.first_name,
-                c.last_name,
-                c.phone,
-                c.lat,
-                c.lng,
-                c.address_note
+            SELECT o.order_id, o.box_count, c.first_name, c.last_name, c.phone, c.lat, c.lng,
+                   rs.stop_seq, rs.eta
             FROM routes r
-            JOIN route_plans rp ON r.plan_id = rp.plan_id
-            JOIN route_stops rs ON r.route_id = rs.route_id
-            JOIN orders o ON rs.order_id = o.order_id
+            JOIN route_plans rp ON rp.plan_id = r.plan_id
+            JOIN route_stops rs ON rs.route_id = r.route_id
+            JOIN orders o ON o.order_id = rs.order_id
             JOIN customers c ON o.customer_id = c.customer_id
-            WHERE r.rider_id = ? AND rp.plan_date = CURDATE()
+            WHERE r.rider_id = ?
+              AND rp.plan_id = (
+                  SELECT latest.plan_id
+                  FROM routes latest_route
+                  JOIN route_plans latest ON latest.plan_id = latest_route.plan_id
+                  WHERE latest_route.rider_id = ?
+                  ORDER BY latest.plan_date DESC, latest.plan_id DESC
+                  LIMIT 1
+              )
+              AND rs.delivered_at IS NULL
+              AND o.status NOT IN ('completed', 'Completed')
             ORDER BY rs.stop_seq ASC
         `;
 
-        const [rows]: any = await conn.query(sql, [riderId]);
+        const [rows]: any = await conn.query(sql, [riderId, riderId]);
         return res.json(rows);
 
     } catch (err: any) {
@@ -417,67 +413,46 @@ router.get('/riders/:id/tasks', async (req: Request, res: Response) => {
     }
 });
 
-
-// New endpoint for saving route plans
 router.post('/route-plans', async (req: Request, res: Response) => {
-    const assignments = req.body?.assignments;
-    if (!Array.isArray(assignments) || assignments.length === 0) {
-        return res.status(400).json({ error: 'ไม่พบรายการเส้นทางที่จะบันทึก' });
-    }
-
-    const assignedOrderIds = new Set<number>();
-    for (const assignment of assignments) {
-        if (!Number.isInteger(Number(assignment?.riderId)) || !Array.isArray(assignment?.stops)) {
-            return res.status(400).json({ error: 'ข้อมูลไรเดอร์หรือจุดส่งไม่ถูกต้อง' });
-        }
-        for (const stop of assignment.stops) {
-            const orderId = Number(stop?.orderId);
-            if (!Number.isInteger(orderId) || assignedOrderIds.has(orderId)) {
-                return res.status(400).json({ error: 'รายการออเดอร์ไม่ถูกต้องหรือซ้ำกัน' });
-            }
-            assignedOrderIds.add(orderId);
-        }
+    const { plan_date, depart_time, assignments } = req.body;
+    if (!plan_date || !Array.isArray(assignments) || assignments.length === 0) {
+        return res.status(400).json({ error: 'กรุณาระบุวันที่และรายการเส้นทาง' });
     }
 
     const connection = await conn.getConnection();
     try {
         await connection.beginTransaction();
-        const planDate = req.body.plan_date || new Date().toISOString().slice(0, 10);
-        const departTime = req.body.depart_time || '11:30:00';
-        const [planResult]: any = await connection.query(
-            'INSERT INTO route_plans (plan_date, depart_time, app_created) VALUES (?, ?, ?)',
-            [planDate, departTime, 1]
-        );
 
-        await connection.query(
-            "UPDATE orders SET rider_id = NULL WHERE status IS NULL OR (status != 'completed' AND status != 'Completed')"
+        const [planResult]: any = await connection.query(
+            'INSERT INTO route_plans (plan_date, depart_time, app_created) VALUES (?, ?, 1)',
+            [plan_date, depart_time ?? null]
         );
+        const planId = planResult.insertId;
 
         for (const assignment of assignments) {
-            const riderId = Number(assignment.riderId);
+            const stops = Array.isArray(assignment.stops) ? assignment.stops : [];
+            if (!assignment.riderId || stops.length === 0) continue;
+
             const [routeResult]: any = await connection.query(
                 'INSERT INTO routes (plan_id, rider_id, color, map_link) VALUES (?, ?, ?, ?)',
-                [planResult.insertId, riderId, assignment.color || '#0077b6', '']
+                [planId, assignment.riderId, assignment.color ?? '#0077b6', '']
             );
 
-            for (const [index, stop] of assignment.stops.entries()) {
-                const orderId = Number(stop.orderId);
+            for (const [index, stop] of stops.entries()) {
+                if (!stop.orderId) continue;
                 await connection.query(
                     'INSERT INTO route_stops (route_id, order_id, stop_seq, eta, delivered_at) VALUES (?, ?, ?, ?, NULL)',
-                    [routeResult.insertId, orderId, index + 1, departTime]
-                );
-                await connection.query(
-                    "UPDATE orders SET rider_id = ? WHERE order_id = ? AND (status IS NULL OR (status != 'completed' AND status != 'Completed'))",
-                    [riderId, orderId]
+                    [routeResult.insertId, stop.orderId, index + 1, null]
                 );
             }
         }
 
         await connection.commit();
-        return res.status(201).json({ message: 'บันทึกแผนเส้นทางและมอบหมายงานสำเร็จ', plan_id: planResult.insertId });
-    } catch (err) {
+        return res.status(201).json({ message: 'บันทึกแผนเส้นทางสำเร็จ', plan_id: planId });
+    } catch (err: any) {
         await connection.rollback();
-        throw err;
+        console.error('API Error POST /route-plans:', err);
+        return res.status(500).json({ error: err?.message || 'ไม่สามารถบันทึกแผนเส้นทางได้' });
     } finally {
         connection.release();
     }
