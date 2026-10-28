@@ -361,3 +361,38 @@ router.put('/orders/:id', async (req: Request, res: Response) => {
         return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการแก้ไขออเดอร์' });
     }
 });
+
+// ดึงรายการจุดส่งของไรเดอร์ตาม rider_id สำหรับวันนี้
+router.get('/api/riders/:riderId/tasks', async (req, res) => {
+    try {
+        const { riderId } = req.params;
+        const today = new Date().toISOString().split('T')[0];
+
+        const query = `
+            SELECT 
+                rs.stop_id,
+                rs.stop_seq,
+                rs.status AS stop_status,
+                o.order_id,
+                o.box_count,
+                o.deadline,
+                c.first_name,
+                c.last_name,
+                c.phone,
+                c.lat,
+                c.lng,
+                c.address_note
+            FROM route_plans rp
+            JOIN routes r ON rp.plan_id = r.plan_id
+            JOIN route_stops rs ON r.route_id = rs.route_id
+            JOIN orders o ON rs.order_id = o.order_id
+            JOIN customers c ON o.customer_id = c.customer_id
+            WHERE r.rider_id = ? AND rp.plan_date = ?
+            ORDER BY rs.stop_seq ASC;
+        `;
+        const [rows] = await conn.query(query, [riderId, today]);
+        res.json(rows);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
