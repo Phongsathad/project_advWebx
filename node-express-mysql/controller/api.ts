@@ -8,6 +8,7 @@ import { Route } from "../model/route";
 import { RouteStops } from "../model/route_stops";
 import { Request, Response, Router } from 'express';
 import { randomBytes, scrypt } from 'crypto';
+import bcrypt from 'bcrypt';
 
 export const router = express.Router();
 
@@ -411,25 +412,25 @@ router.get('/api/riders/:riderId/tasks', async (req, res) => {
     }
 });
 
-// เพิ่มข้อมูลไรเดอร์ใหม่ (POST /riders)
+// เพิ่มข้อมูลไรเดอร์ใหม่พร้อม Hash รหัสผ่าน (POST /riders)
 router.post('/riders', async (req: Request, res: Response) => {
     try {
         const { name, phone, username, capacity, is_active } = req.body;
 
-        // 🔴 ดึงค่ารหัสผ่าน (รองรับทั้งชื่อ password และ password_hash)
+
         const rawPassword = req.body.password || req.body.password_hash;
 
-        // ตรวจสอบว่ามีรหัสผ่านส่งมาหรือไม่
         if (!name || !username || !rawPassword) {
             return res.status(400).json({ error: "กรุณากรอก name, username และ password ให้ครบถ้วน" });
         }
 
-        // หากมีการใช้ bcrypt เข้ารหัสรหัสผ่าน
-        // const hashedPassword = await bcrypt.hash(rawPassword, 10);
-        const hashedPassword = rawPassword; // หรือใช้ค่าตรงถ้ายังไม่ใช้ bcrypt
+
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(rawPassword, saltRounds);
 
         const riderCapacity = capacity ?? 10;
         const activeStatus = is_active ?? 1;
+
 
         const sql = `
       INSERT INTO riders (name, phone, username, password_hash, capacity, is_active)
