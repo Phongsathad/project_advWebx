@@ -7,6 +7,7 @@ import { RoutePlans } from "../model/route_plans";
 import { Route } from "../model/route";
 import { RouteStops } from "../model/route_stops";
 import { Request, Response, Router } from 'express';
+import { randomBytes, scrypt } from 'crypto';
 
 export const router = express.Router();
 
@@ -410,19 +411,49 @@ router.get('/api/riders/:riderId/tasks', async (req, res) => {
     }
 });
 
-// เพิ่มไรเดอร์ใหม่เข้าสู่ระบบ
-router.post('/api/riders', async (req, res) => {
+// เพิ่มข้อมูลไรเดอร์ใหม่ (POST /riders)
+router.post('/riders', async (req: Request, res: Response) => {
     try {
-        const { name, phone, username, password_hash, capacity, is_active } = req.body;
+        const { name, phone, username, capacity, is_active } = req.body;
+
+        // 🔴 ดึงค่ารหัสผ่าน (รองรับทั้งชื่อ password และ password_hash)
+        const rawPassword = req.body.password || req.body.password_hash;
+
+        // ตรวจสอบว่ามีรหัสผ่านส่งมาหรือไม่
+        if (!name || !username || !rawPassword) {
+            return res.status(400).json({ error: "กรุณากรอก name, username และ password ให้ครบถ้วน" });
+        }
+
+        // หากมีการใช้ bcrypt เข้ารหัสรหัสผ่าน
+        // const hashedPassword = await bcrypt.hash(rawPassword, 10);
+        const hashedPassword = rawPassword; // หรือใช้ค่าตรงถ้ายังไม่ใช้ bcrypt
+
+        const riderCapacity = capacity ?? 10;
+        const activeStatus = is_active ?? 1;
 
         const sql = `
-            INSERT INTO riders (name, phone, username, password_hash, capacity, is_active) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        `;
-        const [result] = await conn.query(sql, [name, phone, username, password_hash, capacity, is_active]);
+      INSERT INTO riders (name, phone, username, password_hash, capacity, is_active)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
 
-        return res.status(201).json({ message: "เพิ่มไรเดอร์สำเร็จ", rider_id: (result as any).insertId });
+        const [result] = await conn.query(sql, [
+            name,
+            phone ?? null,
+            username,
+            hashedPassword,
+            riderCapacity,
+            activeStatus
+        ]) as [any, any];
+
+        return res.status(201).json({
+            message: "เพิ่มข้อมูลไรเดอร์สำเร็จ",
+            rider_id: result.insertId
+        });
+
     } catch (err: any) {
+        if (err?.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: "Username นี้ถูกใช้งานแล้ว" });
+        }
         return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการเพิ่มไรเดอร์' });
     }
 });
