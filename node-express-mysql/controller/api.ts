@@ -311,16 +311,17 @@ router.post('/orders', async (req: Request, res: Response) => {
             return res.status(400).json({ error: "กรุณาระบุ customer_id และ box_count ให้ครบถ้วน" });
         }
 
-        // 🟢 1. คำนวณ DEADLINE (เวลาสั่งซื้อปัจจุบัน + 1 ชั่วโมง)
-        const orderTime = new Date();
-        const deadlineDate = new Date(orderTime.getTime() + 60 * 60 * 1000); // บวก 60 นาที
+        // 🟢 1. คำนวณ DEADLINE (+1 ชม.) และบังคับใช้เวลาไทย (Asia/Bangkok) แสดงแค่ HH:mm
+        const deadlineDate = new Date(Date.now() + 60 * 60 * 1000); // บวก 1 ชั่วโมง
 
-        const h = String(deadlineDate.getHours()).padStart(2, '0');
-        const m = String(deadlineDate.getMinutes()).padStart(2, '0');
-        const s = String(deadlineDate.getSeconds()).padStart(2, '0');
-        const deadline = `${h}:${m}:${s}`;
+        const deadline = deadlineDate.toLocaleTimeString('en-GB', {
+            timeZone: 'Asia/Bangkok',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }); // ผลลัพธ์จะได้เป็น "05:06" พอดี
 
-        // 🟢 2. เพิ่มคอลัมน์ deadline ใน SQL INSERT
+        // 🟢 2. บันทึกค่า deadline ลง SQL
         const sql = "INSERT INTO orders (customer_id, box_count, status, deadline) VALUES (?, ?, 'pending', ?)";
         const [result] = await conn.query(sql, [customer_id, box_count, deadline]) as [any, any];
 
@@ -565,7 +566,7 @@ router.post('/api/routes/save', async (req, res) => {
 
         // 1. บันทึกแผนลง route_plans (เปลี่ยน pool เป็นชื่อตัวแปรจริงของคุณ เช่น db หรือ conn)
         const [planResult] = await conn.query(
-            'INSERT INTO route_plans (plan_date) VALUES (?)', 
+            'INSERT INTO route_plans (plan_date) VALUES (?)',
             [plan_date || new Date()]
         );
         const planId = (planResult as any).insertId;
