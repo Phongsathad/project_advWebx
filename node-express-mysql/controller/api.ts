@@ -261,40 +261,51 @@ router.post('/customers', async (req: Request, res: Response) => {
     }
 });
 
-// จำลองการสร้างออเดอร์แบบสุ่ม (simulate orders)
+// จำลองการสร้างออเดอร์แบบสุ่ม
 router.post('/orders/simulate', async (req: Request, res: Response) => {
     try {
         // 1. ดึงข้อมูล customer_id ทั้งหมดที่มีในระบบ
         const [customers] = await conn.query('SELECT customer_id FROM customers') as [any[], any];
 
         if (!customers || customers.length === 0) {
-            return res.status(400).json({ error: 'ไม่พบข้อมูลลูกค้าในระบบ กรุณาเพิ่มข้อมูลลูกค้าก่อนจำลองออเดอร์' });
+            return res.status(400).json({ error: 'ไม่พบข้อมูลลูกค้าในระบบ กรุณาเพิ่มข้อมูลลูกค้ารายการก่อนจำลองออเดอร์' });
         }
 
-        // 2. สุ่มจำนวนออเดอร์ระหว่าง 20 ถึง 30 รายการ
-        const orderCount = Math.floor(Math.random() * (30 - 20 + 1)) + 20;
+        // 🟢 2. เช็กว่า Frontend ส่ง count มาไหม (เช่น ส่ง { count: 1 } มา) ถ้าไม่ส่งมาให้สุ่ม 20 ถึง 30 รายการ
+        const reqCount = Number(req.body?.count);
+        const orderCount = reqCount > 0
+            ? reqCount
+            : Math.floor(Math.random() * (30 - 20 + 1)) + 20;
+
+        // 🟢 3. คำนวณ DEADLINE เวลาไทย (Asia/Bangkok) + 1 ชั่วโมง แสดงเป็น HH:mm
+        const deadlineDate = new Date(Date.now() + 60 * 60 * 1000);
+        const deadline = deadlineDate.toLocaleTimeString('en-GB', {
+            timeZone: 'Asia/Bangkok',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
 
         const newOrders = [];
 
-        // 3. สุ่มสร้างข้อมูลออเดอร์
+        // 4. สุ่มสร้างข้อมูลออเดอร์
         for (let i = 0; i < orderCount; i++) {
-            // สุ่มเลือกลูกค้า 1 คนจากรายการทั้งหมด
             const randomCustomer = customers[Math.floor(Math.random() * customers.length)];
-
-            // สุ่มจำนวนกล่อง 1 ถึง 3 กล่อง
             const boxCount = Math.floor(Math.random() * 3) + 1;
 
-            newOrders.push([randomCustomer.customer_id, boxCount, 'pending']);
+            // 🟢 เพิ่มค่า deadline เข้าไปในชุดข้อมูล
+            newOrders.push([randomCustomer.customer_id, boxCount, 'pending', deadline]);
         }
 
-        // 4. บันทึกข้อมูลลงในตาราง orders แบบ Bulk Insert
-        const sql = 'INSERT INTO orders (customer_id, box_count, status) VALUES ?';
+        // 🟢 5. เพิ่มคอลัมน์ deadline ในคำสั่ง SQL
+        const sql = 'INSERT INTO orders (customer_id, box_count, status, deadline) VALUES ?';
         const [result] = await conn.query(sql, [newOrders]) as [any, any];
 
         return res.json({
             message: `จำลองออเดอร์สำเร็จจำนวน ${orderCount} รายการ`,
             count: orderCount,
-            inserted_rows: result.affectedRows
+            inserted_rows: result.affectedRows,
+            deadline
         });
 
     } catch (err: any) {
@@ -441,7 +452,7 @@ router.post('/route-plans', async (req: Request, res: Response) => {
 
         const [planResult]: any = await connection.query(
             'INSERT INTO route_plans (plan_date, depart_time, app_created) VALUES (?, ?, 1)',
-            [plan_date, depart_time ?? null]
+            [plan_date, depart_time || new Date().toTimeString().slice(0, 8)]
         );
         const planId = planResult.insertId;
 
