@@ -396,3 +396,26 @@ router.get('/api/riders/:riderId/tasks', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// แก้ไขข้อมูลลูกค้า
+router.put('/customers/:id', async (req: Request, res: Response) => {
+    try {
+        const customerId = req.params.id;
+        const { first_name, last_name, phone, lat, lng } = req.body;
+
+        const sql = `
+            UPDATE customers 
+            SET first_name = ?, last_name = ?, phone = ?, lat = ?, lng = ? 
+            WHERE customer_id = ?
+        `;
+        const [result] = await conn.query(sql, [first_name, last_name, phone, lat, lng, customerId]) as [any, any];
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "ไม่พบข้อมูลลูกค้าที่ต้องการแก้ไข" });
+        }
+
+        return res.status(200).json({ message: "อัปเดตข้อมูลลูกค้าสำเร็จ" });
+    } catch (err: any) {
+        return res.status(500).json({ error: err?.message ?? 'เกิดข้อผิดพลาดในการแก้ไขลูกค้า' });
+    }
+});////
